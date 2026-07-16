@@ -12,8 +12,9 @@ const state = {
   questionTimer: null,
 };
 let _pageChanging = false; // 防抖锁：防止翻页竞态
-let _autoPageTimer = null;  // 自动翻页定时器（stopSpeak 时取消）
-let _speakId = 0;           // 递增 ID，丢弃旧的 onend 回调
+let _autoPageTimer = null;  // 自动翻页定时器
+let _pollTimer = null;      // 轮询定时器（检测播放结束）
+let _onPlayEnd = null;      // 当前播放结束回调
 
 // ----- 工具函数 -----
 function $(id) { return document.getElementById(id); }
@@ -35,36 +36,26 @@ function playAudio(src, onEnd) {
     updateSpeakButton();
     return;
   }
-  // 清除旧事件，避免 stopSpeak 清空 src 时误触发
   audioPlayer.onended = null;
   audioPlayer.onerror = null;
   audioPlayer.pause();
   audioPlayer.src = src;
 
-  audioPlayer.onended = () => {
-    // 保护：音频必须播到 90% 以上才算真正结束
-    // OPPO 等浏览器可能提前误触发 ended 事件
-    const dur = audioPlayer.duration;
-    const cur = audioPlayer.currentTime;
-    if (dur > 0 && cur < dur * 0.85) {
-      console.warn('Premature ended ignored:', cur, '/', dur);
-      return; // 忽略提前触发的 ended
-    }
-    state.isSpeaking = false;
-    updateSpeakButton();
-    if (onEnd) onEnd();
-  };
+  // 只处理错误，播放结束由轮询检测
   audioPlayer.onerror = () => {
-    // 音频加载失败：禁用自动播放，不触发 onEnd（避免连续跳转）
     console.warn('Audio load failed:', src);
     state.isSpeaking = false;
     updateSpeakButton();
+    _stopPolling();
     state.isAutoPlay = false;
     updateAutoPlayBtn();
   };
+
+  _onPlayEnd = onEnd;
   state.isSpeaking = true;
   updateSpeakButton();
-  // 兼容旧浏览器：play() 可能不返回 Promise
+  _startPolling();
+
   try {
     const promise = audioPlayer.play();
     if (promise && typeof promise.catch === 'function') {
@@ -72,13 +63,12 @@ function playAudio(src, onEnd) {
         console.warn('Audio play blocked:', src);
         state.isSpeaking = false;
         updateSpeakButton();
+        _stopPolling();
         state.isAutoPlay = false;
         updateAutoPlayBtn();
       });
     }
-  } catch (_) {
-    // 旧浏览器忽略 play 错误
-  }
+  } catch (_) { /* 旧浏览器忽略 */ }
 }
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -126,8 +116,6 @@ function speak(text, onEnd) {
     return;
   }
 
-  const myId = ++_speakId; // 递增 ID，旧回调会被丢弃
-
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'zh-CN';
   u.rate = 0.85;
@@ -138,63 +126,83 @@ function speak(text, onEnd) {
     const voices = synth.getVoices();
     const localZh = voices.find(v => v.lang.startsWith('zh') && v.localService);
     const anyZh = voices.find(v => v.lang.startsWith('zh'));
-    const target = localZh || anyZh;
-    if (target) u.voice = target;
+    if (localZh) u.voice = localZh;
+    else if (anyZh) u.voice = anyZh;
   }
 
-  u.onstart = () => {
-    state.isSpeaking = true;
-    updateSpeakButton();
-  };
-  u.onend = () => {
-    if (myId !== _speakId) return; // 旧回调，丢弃！
-    currentUtterance = null;
+  // 播放结束由轮询检测，不依赖 onend
+  u.onerror = () => {
+    // TTS 出错降级
+    _ttsAvailable = false;
+    _useAudioFallback = true;
+    _stopPolling();
     state.isSpeaking = false;
     updateSpeakButton();
-    if (onEnd) onEnd();
-  };
-  u.onerror = (e) => {
-    if (myId !== _speakId) return; // 旧回调，丢弃！
-    console.warn('TTS error:', e.error);
-    currentUtterance = null;
-    state.isSpeaking = false;
-    updateSpeakButton();
-    if (e.error === 'network' || e.error === 'not-allowed' || e.error === 'synthesis-failed') {
-      _ttsAvailable = false;
-      _useAudioFallback = true;
-      updateSpeakButton();
-      updateAutoPlayBtn();
-      state.isAutoPlay = false;
-    }
+    updateAutoPlayBtn();
+    state.isAutoPlay = false;
   };
 
+  _onPlayEnd = onEnd;
   currentUtterance = u;
   state.isSpeaking = true;
   updateSpeakButton();
   synth.speak(u);
+  _startPolling();
 }
 
 function stopSpeak() {
-  // 递增 ID，所有旧 utterance 回调立即失效
-  _speakId++;
-  if (currentUtterance) {
-    currentUtterance.onend = null;
-    currentUtterance.onerror = null;
-  }
+  // 停止轮询
+  _stopPolling();
+  // 取消自动翻页定时器
+  if (_autoPageTimer) { clearTimeout(_autoPageTimer); _autoPageTimer = null; }
+  // 清除播放结束回调
+  _onPlayEnd = null;
+  // 停止 TTS
   if (synth) synth.cancel();
+  // 停止 audio
   if (audioPlayer) {
     audioPlayer.onended = null;
     audioPlayer.onerror = null;
     audioPlayer.pause();
     audioPlayer.src = '';
   }
-  // 取消潜伏的自动翻页定时器（关键！）
-  if (_autoPageTimer) {
-    clearTimeout(_autoPageTimer);
-    _autoPageTimer = null;
-  }
   currentUtterance = null;
   state.isSpeaking = false;
+}
+
+// ----- 播放结束轮询（替代不可靠的 onend 回调） -----
+function _startPolling() {
+  _stopPolling();
+  _pollTimer = setInterval(() => {
+    // 检查 speechSynthesis
+    if (synth && state.isSpeaking && !synth.speaking && currentUtterance) {
+      // TTS 播放结束
+      currentUtterance = null;
+      state.isSpeaking = false;
+      updateSpeakButton();
+      _stopPolling();
+      const cb = _onPlayEnd;
+      _onPlayEnd = null;
+      if (cb) cb();
+      return;
+    }
+    // 检查 audio
+    if (audioPlayer && state.isSpeaking && !audioPlayer.paused && audioPlayer.duration > 0) {
+      if (audioPlayer.currentTime >= audioPlayer.duration - 0.3) {
+        // audio 播放接近结束
+        state.isSpeaking = false;
+        updateSpeakButton();
+        _stopPolling();
+        const cb = _onPlayEnd;
+        _onPlayEnd = null;
+        if (cb) cb();
+      }
+    }
+  }, 300);
+}
+
+function _stopPolling() {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
 }
 
 function updateSpeakButton() {
