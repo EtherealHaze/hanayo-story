@@ -173,23 +173,27 @@ function stopSpeak() {
 // ----- 播放结束轮询（替代不可靠的 onend 回调） -----
 function _startPolling() {
   _stopPolling();
+  // TTS 启动有延迟，前两次轮询跳过，等 speaking 变 true
+  let skipCount = 2;
   _pollTimer = setInterval(() => {
     // 检查 speechSynthesis
-    if (synth && state.isSpeaking && !synth.speaking && currentUtterance) {
-      // TTS 播放结束
-      currentUtterance = null;
-      state.isSpeaking = false;
-      updateSpeakButton();
-      _stopPolling();
-      const cb = _onPlayEnd;
-      _onPlayEnd = null;
-      if (cb) cb();
-      return;
+    if (synth && state.isSpeaking && currentUtterance) {
+      if (skipCount > 0) { skipCount--; return; }
+      // 真的结束了（不在播也不在排队），不是还没开始
+      if (!synth.speaking && !synth.pending) {
+        currentUtterance = null;
+        state.isSpeaking = false;
+        updateSpeakButton();
+        _stopPolling();
+        const cb = _onPlayEnd;
+        _onPlayEnd = null;
+        if (cb) cb();
+        return;
+      }
     }
     // 检查 audio
     if (audioPlayer && state.isSpeaking && !audioPlayer.paused && audioPlayer.duration > 0) {
       if (audioPlayer.currentTime >= audioPlayer.duration - 0.3) {
-        // audio 播放接近结束
         state.isSpeaking = false;
         updateSpeakButton();
         _stopPolling();
