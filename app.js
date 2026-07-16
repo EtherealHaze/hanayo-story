@@ -512,6 +512,38 @@ if ('serviceWorker' in navigator) {
 function init() {
   renderHome();
   showPage('home');
+  checkTtsCompatibility();
+}
+
+function checkTtsCompatibility() {
+  const hint = $('tts-hint');
+  if (!hint) return;
+
+  // 检测浏览器
+  const ua = navigator.userAgent;
+  const isChrome = /Chrome/i.test(ua) && !/Edge|OPR|OPPO|UCBrowser|QQ/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
+
+  // 给 TTS 检测一个短暂延迟，等 voices 加载
+  setTimeout(() => {
+    let reason = '';
+    if (!synth) {
+      reason = '你的浏览器不支持语音朗读，试试用 <b>Chrome 浏览器</b> 打开吧～';
+    } else if (!_ttsAvailable) {
+      if (isAndroid && !isChrome) {
+        reason = '此浏览器可能不支持语音朗读，推荐用 <b>Chrome 浏览器</b> 打开～ 📱';
+      } else if (!isChrome) {
+        reason = '当前浏览器语音兼容性有限，推荐用 <b>Chrome</b> 或 <b>Edge</b> 打开～';
+      } else {
+        reason = '未检测到中文语音，请检查系统 TTS 设置～';
+      }
+    }
+    if (reason) {
+      hint.innerHTML = `<span>🔇 ${reason}</span>
+        <button onclick="this.parentElement.remove()" style="margin-left:10px;background:none;border:none;font-size:18px;cursor:pointer;color:#E65100;">✕</button>`;
+      hint.classList.remove('hidden');
+    }
+  }, 2000);
 }
 // 确保即使 DOMContentLoaded 已触发也能正常初始化
 if (document.readyState === 'loading') {

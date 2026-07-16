@@ -13,6 +13,12 @@
 </head>
 <body>
 
+<!-- TTS 兼容提示条 -->
+<div id="tts-hint" class="tts-hint hidden">
+  <span>🔇 此浏览器可能不支持语音朗读</span>
+  <button onclick="this.parentElement.remove()" style="margin-left:8px;background:none;border:none;font-size:16px;cursor:pointer">✕</button>
+</div>
+
 <!-- ====== 页面容器 ====== -->
 <div id="app">
 
