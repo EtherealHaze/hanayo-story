@@ -175,6 +175,11 @@ function speak(text, onEnd) {
 }
 
 function stopSpeak() {
+  // 先清除 utterance 回调，防止 synth.cancel() 异步触发 onend
+  if (currentUtterance) {
+    currentUtterance.onend = null;
+    currentUtterance.onerror = null;
+  }
   if (synth) synth.cancel();
   if (audioPlayer) {
     audioPlayer.onended = null;
