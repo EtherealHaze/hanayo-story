@@ -13,6 +13,7 @@ const state = {
 };
 let _pageChanging = false; // 防抖锁：防止翻页竞态
 let _autoPageTimer = null;  // 自动翻页定时器（stopSpeak 时取消）
+let _speakId = 0;           // 递增 ID，丢弃旧的 onend 回调
 
 // ----- 工具函数 -----
 function $(id) { return document.getElementById(id); }
@@ -119,12 +120,13 @@ if (synth) {
 function speak(text, onEnd) {
   stopSpeak();
   if (!synth || !_ttsAvailable) {
-    // TTS 不可用，静默完成
     state.isSpeaking = false;
     updateSpeakButton();
     if (onEnd) setTimeout(onEnd, 100);
     return;
   }
+
+  const myId = ++_speakId; // 递增 ID，旧回调会被丢弃
 
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'zh-CN';
@@ -132,10 +134,8 @@ function speak(text, onEnd) {
   u.pitch = 1.15;
   u.volume = 1;
 
-  // 优先选本地中文语音（离线可用），不指定则用浏览器默认
   if (_voicesReady) {
     const voices = synth.getVoices();
-    // 优先本地语音（localService），其次远程
     const localZh = voices.find(v => v.lang.startsWith('zh') && v.localService);
     const anyZh = voices.find(v => v.lang.startsWith('zh'));
     const target = localZh || anyZh;
@@ -147,17 +147,18 @@ function speak(text, onEnd) {
     updateSpeakButton();
   };
   u.onend = () => {
+    if (myId !== _speakId) return; // 旧回调，丢弃！
     currentUtterance = null;
     state.isSpeaking = false;
     updateSpeakButton();
     if (onEnd) onEnd();
   };
   u.onerror = (e) => {
+    if (myId !== _speakId) return; // 旧回调，丢弃！
     console.warn('TTS error:', e.error);
     currentUtterance = null;
     state.isSpeaking = false;
     updateSpeakButton();
-    // 出错 → 下次切 audio 后备，本次不触发 onEnd（避免连续跳转）
     if (e.error === 'network' || e.error === 'not-allowed' || e.error === 'synthesis-failed') {
       _ttsAvailable = false;
       _useAudioFallback = true;
@@ -165,7 +166,6 @@ function speak(text, onEnd) {
       updateAutoPlayBtn();
       state.isAutoPlay = false;
     }
-    // 注意：不调用 onEnd！避免错误时连续跳转
   };
 
   currentUtterance = u;
@@ -175,7 +175,8 @@ function speak(text, onEnd) {
 }
 
 function stopSpeak() {
-  // 先清除 utterance 回调，防止 synth.cancel() 异步触发 onend
+  // 递增 ID，所有旧 utterance 回调立即失效
+  _speakId++;
   if (currentUtterance) {
     currentUtterance.onend = null;
     currentUtterance.onerror = null;
