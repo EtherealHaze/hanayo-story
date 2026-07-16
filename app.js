@@ -406,24 +406,28 @@ function showSummary() {
 let touchStartX = 0;
 let touchStartY = 0;
 
-document.addEventListener('DOMContentLoaded', () => {
+function bindTouchEvents() {
   const stage = $('story-stage');
-  if (stage) {
-    stage.addEventListener('touchstart', e => {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-    }, {passive: true});
-
-    stage.addEventListener('touchend', e => {
-      const dx = e.changedTouches[0].clientX - touchStartX;
-      const dy = e.changedTouches[0].clientY - touchStartY;
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 60) {
-        if (dx < 0) nextPage();
-        else prevPage();
-      }
-    });
-  }
-});
+  if (!stage) return;
+  stage.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, {passive: true});
+  stage.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 60) {
+      if (dx < 0) nextPage();
+      else prevPage();
+    }
+  });
+}
+// 确保 DOM 就绪后绑定触摸
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bindTouchEvents);
+} else {
+  bindTouchEvents();
+}
 
 // ===== Service Worker 注册 =====
 if ('serviceWorker' in navigator) {
@@ -433,7 +437,13 @@ if ('serviceWorker' in navigator) {
 }
 
 // ===== 初始化 =====
-document.addEventListener('DOMContentLoaded', () => {
+function init() {
   renderHome();
   showPage('home');
-});
+}
+// 确保即使 DOMContentLoaded 已触发也能正常初始化
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
