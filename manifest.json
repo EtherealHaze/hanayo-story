@@ -1,0 +1,14 @@
+{
+  "name": "花音故事 - 语文绘本",
+  "short_name": "花音故事",
+  "description": "面向 6-7 岁小朋友的语文学习绘本，翻页动画 + 语音朗读 + 互动问答",
+  "start_url": "index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF3E0",
+  "theme_color": "#AB47BC",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "lang": "zh-CN"
+}

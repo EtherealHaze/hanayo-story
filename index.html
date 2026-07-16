@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#FFF3E0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="花音故事">
+<title>🌸 花音故事</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ====== 页面容器 ====== -->
+<div id="app">
+
+  <!-- 首页：故事列表 -->
+  <div id="page-home" class="page active">
+    <div class="home-header">
+      <div class="home-title-row">
+        <span class="home-emoji">📖</span>
+        <h1 class="home-title">花音故事</h1>
+      </div>
+      <p class="home-subtitle">选一个好听的故事吧～</p>
+    </div>
+    <div id="story-list" class="story-list"></div>
+    <div class="home-footer">
+      <p>📚 部编版一年级语文 · 知识点融入</p>
+    </div>
+  </div>
+
+  <!-- 引导问题页 -->
+  <div id="page-questions" class="page">
+    <div class="q-header">
+      <button class="btn-back" onclick="goHome()">✕</button>
+    </div>
+    <div class="q-content">
+      <div id="q-story-emoji" class="q-emoji"></div>
+      <h2 id="q-story-title" class="q-title"></h2>
+      <p class="q-label">带着问题听故事</p>
+      <div id="q-card" class="q-card">
+        <span id="q-number" class="q-number"></span>
+        <p id="q-text" class="q-text"></p>
+      </div>
+      <div id="q-ready" class="q-ready hidden">
+        <span class="q-ready-icon">✨</span>
+        <p>准备好啦～故事马上开始</p>
+      </div>
+    </div>
+    <button class="btn-skip" onclick="skipToStory()">直接听故事 →</button>
+  </div>
+
+  <!-- 故事播放页 -->
+  <div id="page-story" class="page">
+    <div class="story-topbar">
+      <button class="btn-back" onclick="goHome()">✕</button>
+      <button id="btn-autoplay" class="btn-mode" onclick="toggleAutoPlay()">🔊 自动</button>
+    </div>
+    <!-- TTS 启动覆盖层 -->
+    <div id="story-overlay" class="story-overlay">
+      <button id="btn-start-story" class="btn-start-story">🔊<br><span>点击开始听故事</span></button>
+    </div>
+    <div class="story-stage" id="story-stage">
+      <!-- 插画区域 -->
+      <div class="story-illust" id="story-illust">
+        <span id="story-emoji" class="story-illust-emoji"></span>
+      </div>
+      <!-- 翻页线 -->
+      <div class="story-fold"></div>
+      <!-- 文字区域 -->
+      <div class="story-text-area" id="story-text-area">
+        <p id="story-text" class="story-text"></p>
+      </div>
+    </div>
+    <div class="story-controls">
+      <div class="story-dots" id="story-dots"></div>
+      <div class="story-buttons">
+        <button class="btn-page" id="btn-prev" onclick="prevPage()">◀ 上一页</button>
+        <button class="btn-page primary" id="btn-speak" onclick="replayPage()">🔊 再读一次</button>
+        <button class="btn-page" id="btn-next" onclick="nextPage()">下一页 ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 互动问答页 -->
+  <div id="page-quiz" class="page">
+    <div class="quiz-bar" id="quiz-bar"></div>
+    <div class="quiz-content" id="quiz-content">
+      <p id="quiz-number" class="quiz-number"></p>
+      <div id="quiz-question" class="quiz-question"></div>
+      <div id="quiz-options" class="quiz-options"></div>
+      <div id="quiz-feedback" class="quiz-feedback hidden"></div>
+    </div>
+    <button id="btn-quiz-next" class="btn-continue hidden" onclick="nextQuiz()"></button>
+  </div>
+
+  <!-- 知识点小结页 -->
+  <div id="page-summary" class="page">
+    <div class="summary-content">
+      <div class="summary-star" id="summary-star"></div>
+      <p id="summary-msg" class="summary-msg"></p>
+      <div id="summary-score" class="summary-score"></div>
+      <h3 class="summary-section-title">📚 今天学到的小知识</h3>
+      <div id="summary-kp-list" class="summary-kp-list"></div>
+    </div>
+    <button class="btn-home" onclick="goHome()">再听一个故事 📖</button>
+  </div>
+
+</div>
+
+<script src="stories.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
