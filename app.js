@@ -11,10 +11,11 @@ const state = {
   quizAnswered: false,
   questionTimer: null,
 };
-let _pageChanging = false; // 防抖锁：防止翻页竞态
-let _autoPageTimer = null;  // 自动翻页定时器
-let _pollTimer = null;      // 轮询定时器（检测播放结束）
-let _onPlayEnd = null;      // 当前播放结束回调
+let _pageChanging = false;
+let _autoPageTimer = null;
+let _pollTimer = null;
+let _onPlayEnd = null;
+let _speakStarted = false;  // onstart 确认后才开始轮询检测结束
 
 // ----- 工具函数 -----
 function $(id) { return document.getElementById(id); }
@@ -130,7 +131,8 @@ function speak(text, onEnd) {
     else if (anyZh) u.voice = anyZh;
   }
 
-  // 播放结束由轮询检测，不依赖 onend
+  // 播放结束由轮询检测，onstart 确认开始后再检测
+  u.onstart = () => { _speakStarted = true; };
   u.onerror = () => {
     // TTS 出错降级
     _ttsAvailable = false;
@@ -151,11 +153,9 @@ function speak(text, onEnd) {
 }
 
 function stopSpeak() {
-  // 停止轮询
   _stopPolling();
-  // 取消自动翻页定时器
+  _speakStarted = false;
   if (_autoPageTimer) { clearTimeout(_autoPageTimer); _autoPageTimer = null; }
-  // 清除播放结束回调
   _onPlayEnd = null;
   // 停止 TTS
   if (synth) synth.cancel();
@@ -173,32 +173,28 @@ function stopSpeak() {
 // ----- 播放结束轮询（替代不可靠的 onend 回调） -----
 function _startPolling() {
   _stopPolling();
-  // TTS 启动有延迟，前两次轮询跳过，等 speaking 变 true
-  let skipCount = 2;
   _pollTimer = setInterval(() => {
-    // 检查 speechSynthesis
+    // TTS：必须 onstart 确认已开始播放，才检测结束
     if (synth && state.isSpeaking && currentUtterance) {
-      if (skipCount > 0) { skipCount--; return; }
-      // 真的结束了（不在播也不在排队），不是还没开始
+      if (!_speakStarted) return; // 还没开始，继续等
       if (!synth.speaking && !synth.pending) {
+        // 确认结束
         currentUtterance = null;
         state.isSpeaking = false;
         updateSpeakButton();
         _stopPolling();
-        const cb = _onPlayEnd;
-        _onPlayEnd = null;
+        const cb = _onPlayEnd; _onPlayEnd = null;
         if (cb) cb();
         return;
       }
     }
-    // 检查 audio
+    // Audio：靠进度检测
     if (audioPlayer && state.isSpeaking && !audioPlayer.paused && audioPlayer.duration > 0) {
       if (audioPlayer.currentTime >= audioPlayer.duration - 0.3) {
         state.isSpeaking = false;
         updateSpeakButton();
         _stopPolling();
-        const cb = _onPlayEnd;
-        _onPlayEnd = null;
+        const cb = _onPlayEnd; _onPlayEnd = null;
         if (cb) cb();
       }
     }
