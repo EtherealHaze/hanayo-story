@@ -33,32 +33,74 @@ function showPage(name) {
 // ===== TTS 语音 =====
 const synth = window.speechSynthesis;
 let currentUtterance = null;
+let _voicesReady = false;
+let _ttsAvailable = !!synth;
+
+// 强制加载 voices（Chrome 异步加载）
+if (synth) {
+  const voices = synth.getVoices();
+  if (voices && voices.length > 0) {
+    _voicesReady = true;
+  }
+  synth.onvoiceschanged = () => {
+    _voicesReady = true;
+    _ttsAvailable = synth.getVoices().length > 0;
+  };
+  // 超时检测：3 秒后 voices 还没加载，标记为不可用
+  setTimeout(() => {
+    if (!_voicesReady) {
+      _voicesReady = true;
+      _ttsAvailable = synth.getVoices().length > 0;
+    }
+  }, 3000);
+}
 
 function speak(text, onEnd) {
   stopSpeak();
-  if (!synth) return;
+  if (!synth || !_ttsAvailable) {
+    // TTS 不可用，静默完成
+    state.isSpeaking = false;
+    updateSpeakButton();
+    if (onEnd) setTimeout(onEnd, 100);
+    return;
+  }
 
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'zh-CN';
-  u.rate = 0.85;   // 稍慢，适合小朋友
-  u.pitch = 1.15;  // 稍高，更童趣
+  u.rate = 0.85;
+  u.pitch = 1.15;
   u.volume = 1;
 
-  // 尝试选择中文语音
-  const voices = synth.getVoices();
-  const zhVoice = voices.find(v => v.lang.startsWith('zh-CN') || v.lang.startsWith('zh-'));
-  if (zhVoice) u.voice = zhVoice;
+  // 优先选本地中文语音（离线可用），不指定则用浏览器默认
+  if (_voicesReady) {
+    const voices = synth.getVoices();
+    // 优先本地语音（localService），其次远程
+    const localZh = voices.find(v => v.lang.startsWith('zh') && v.localService);
+    const anyZh = voices.find(v => v.lang.startsWith('zh'));
+    const target = localZh || anyZh;
+    if (target) u.voice = target;
+  }
 
+  u.onstart = () => {
+    state.isSpeaking = true;
+    updateSpeakButton();
+  };
   u.onend = () => {
     currentUtterance = null;
     state.isSpeaking = false;
     updateSpeakButton();
     if (onEnd) onEnd();
   };
-  u.onerror = () => {
+  u.onerror = (e) => {
+    console.log('TTS error:', e.error);
     currentUtterance = null;
     state.isSpeaking = false;
     updateSpeakButton();
+    // 如果是网络错误，标记不可用
+    if (e.error === 'network' || e.error === 'not-allowed') {
+      _ttsAvailable = false;
+    }
+    if (onEnd) setTimeout(onEnd, 100);
   };
 
   currentUtterance = u;
@@ -75,8 +117,15 @@ function stopSpeak() {
 
 function updateSpeakButton() {
   const btn = $('btn-speak');
-  if (btn) {
-    btn.textContent = state.isSpeaking ? '🔊 朗读中…' : '🔊 再读一次';
+  if (!btn) return;
+  if (!_ttsAvailable) {
+    btn.style.display = 'none'; // TTS 不可用，隐藏朗读按钮
+  } else if (state.isSpeaking) {
+    btn.style.display = '';
+    btn.textContent = '🔊 朗读中…';
+  } else {
+    btn.style.display = '';
+    btn.textContent = '🔊 再读一次';
   }
 }
 
@@ -176,9 +225,21 @@ function startStory() {
   const btn = $('btn-start-story');
   overlay.classList.remove('hidden');
 
+  if (_ttsAvailable) {
+    btn.innerHTML = '🔊<br><span>点击开始听故事</span>';
+  } else {
+    btn.innerHTML = '📖<br><span>点击开始阅读</span>';
+  }
+
   btn.onclick = () => {
     overlay.classList.add('hidden');
-    speakCurrentPage();
+    if (_ttsAvailable) {
+      speakCurrentPage();
+    } else {
+      // 无 TTS：直接进入静音阅读模式
+      state.isSpeaking = false;
+      updateSpeakButton();
+    }
   };
 }
 
@@ -206,9 +267,14 @@ function renderStoryPage() {
 }
 
 function speakCurrentPage() {
+  if (!_ttsAvailable) {
+    // 无 TTS：不触发自动翻页
+    state.isSpeaking = false;
+    updateSpeakButton();
+    return;
+  }
   const page = state.currentStory.pages[state.currentPage];
   speak(page.text, () => {
-    // 朗读完毕：自动模式下翻到下一页
     if (state.isAutoPlay && state.currentPage < state.currentStory.pages.length - 1) {
       setTimeout(() => nextPage(), 700);
     }
@@ -253,6 +319,12 @@ function toggleAutoPlay() {
 
 function updateAutoPlayBtn() {
   const btn = $('btn-autoplay');
+  if (!_ttsAvailable) {
+    btn.style.display = 'none';
+    state.isAutoPlay = false;
+    return;
+  }
+  btn.style.display = '';
   if (state.isAutoPlay) {
     btn.textContent = '🔊 自动';
     btn.classList.remove('manual');
