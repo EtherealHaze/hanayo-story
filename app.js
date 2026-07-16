@@ -23,7 +23,33 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// ===== 页面切换 =====
+// ===== 备用 Audio 播放 =====
+const audioPlayer = $('audio-player');
+
+function playAudio(src, onEnd) {
+  if (!audioPlayer) {
+    if (onEnd) setTimeout(onEnd, 100);
+    return;
+  }
+  audioPlayer.src = src;
+  audioPlayer.onended = () => {
+    state.isSpeaking = false;
+    updateSpeakButton();
+    if (onEnd) onEnd();
+  };
+  audioPlayer.onerror = () => {
+    state.isSpeaking = false;
+    updateSpeakButton();
+    if (onEnd) setTimeout(onEnd, 100);
+  };
+  state.isSpeaking = true;
+  updateSpeakButton();
+  audioPlayer.play().catch(() => {
+    state.isSpeaking = false;
+    updateSpeakButton();
+    if (onEnd) setTimeout(onEnd, 100);
+  });
+}
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const page = $('page-' + name);
@@ -35,6 +61,7 @@ const synth = window.speechSynthesis;
 let currentUtterance = null;
 let _voicesReady = false;
 let _ttsAvailable = !!synth;
+let _useAudioFallback = false; // 是否使用 MP3 后备方案
 
 // 强制加载 voices（Chrome 异步加载）
 if (synth) {
@@ -46,11 +73,16 @@ if (synth) {
     _voicesReady = true;
     _ttsAvailable = synth.getVoices().length > 0;
   };
-  // 超时检测：3 秒后 voices 还没加载，标记为不可用
+  // 超时检测：3 秒后 voices 还没加载，启用 MP3 后备
   setTimeout(() => {
     if (!_voicesReady) {
       _voicesReady = true;
       _ttsAvailable = synth.getVoices().length > 0;
+      if (!_ttsAvailable) {
+        _useAudioFallback = true;
+        updateSpeakButton();
+        updateAutoPlayBtn();
+      }
     }
   }, 3000);
 }
@@ -96,9 +128,12 @@ function speak(text, onEnd) {
     currentUtterance = null;
     state.isSpeaking = false;
     updateSpeakButton();
-    // 如果是网络错误，标记不可用
-    if (e.error === 'network' || e.error === 'not-allowed') {
+    // 网络错误 → 启用 MP3 后备
+    if (e.error === 'network' || e.error === 'not-allowed' || e.error === 'synthesis-failed') {
       _ttsAvailable = false;
+      _useAudioFallback = true;
+      updateSpeakButton();
+      updateAutoPlayBtn();
     }
     if (onEnd) setTimeout(onEnd, 100);
   };
@@ -111,6 +146,7 @@ function speak(text, onEnd) {
 
 function stopSpeak() {
   if (synth) synth.cancel();
+  if (audioPlayer) { audioPlayer.pause(); audioPlayer.src = ''; }
   currentUtterance = null;
   state.isSpeaking = false;
 }
@@ -118,14 +154,14 @@ function stopSpeak() {
 function updateSpeakButton() {
   const btn = $('btn-speak');
   if (!btn) return;
-  if (!_ttsAvailable) {
-    btn.style.display = 'none'; // TTS 不可用，隐藏朗读按钮
+  if (!_ttsAvailable && !_useAudioFallback) {
+    btn.style.display = 'none';
   } else if (state.isSpeaking) {
     btn.style.display = '';
-    btn.textContent = '🔊 朗读中…';
+    btn.textContent = _useAudioFallback ? '🎵 播放中…' : '🔊 朗读中…';
   } else {
     btn.style.display = '';
-    btn.textContent = '🔊 再读一次';
+    btn.textContent = _useAudioFallback ? '🎵 再播一次' : '🔊 再读一次';
   }
 }
 
@@ -225,18 +261,17 @@ function startStory() {
   const btn = $('btn-start-story');
   overlay.classList.remove('hidden');
 
-  if (_ttsAvailable) {
-    btn.innerHTML = '🔊<br><span>点击开始听故事</span>';
+  if (_ttsAvailable || _useAudioFallback) {
+    btn.innerHTML = '🎵<br><span>点击开始听故事</span>';
   } else {
     btn.innerHTML = '📖<br><span>点击开始阅读</span>';
   }
 
   btn.onclick = () => {
     overlay.classList.add('hidden');
-    if (_ttsAvailable) {
+    if (_ttsAvailable || _useAudioFallback) {
       speakCurrentPage();
     } else {
-      // 无 TTS：直接进入静音阅读模式
       state.isSpeaking = false;
       updateSpeakButton();
     }
@@ -268,9 +303,15 @@ function renderStoryPage() {
 
 function speakCurrentPage() {
   if (!_ttsAvailable) {
-    // 无 TTS：不触发自动翻页
-    state.isSpeaking = false;
-    updateSpeakButton();
+    // 无 TTS：尝试播放预生成 MP3
+    const story = state.currentStory;
+    const pageIdx = state.currentPage;
+    const audioSrc = `assets/audio/${story.id}_p${pageIdx}.mp3`;
+    playAudio(audioSrc, () => {
+      if (state.isAutoPlay && state.currentPage < story.pages.length - 1) {
+        setTimeout(() => nextPage(), 700);
+      }
+    });
     return;
   }
   const page = state.currentStory.pages[state.currentPage];
@@ -319,14 +360,14 @@ function toggleAutoPlay() {
 
 function updateAutoPlayBtn() {
   const btn = $('btn-autoplay');
-  if (!_ttsAvailable) {
+  if (!_ttsAvailable && !_useAudioFallback) {
     btn.style.display = 'none';
     state.isAutoPlay = false;
     return;
   }
   btn.style.display = '';
   if (state.isAutoPlay) {
-    btn.textContent = '🔊 自动';
+    btn.textContent = _useAudioFallback ? '🎵 自动' : '🔊 自动';
     btn.classList.remove('manual');
   } else {
     btn.textContent = '👆 手动';
@@ -510,6 +551,10 @@ if ('serviceWorker' in navigator) {
 
 // ===== 初始化 =====
 function init() {
+  // 如果 TTS 明显不可用但 audio 元素存在，提前启用后备
+  if (!_ttsAvailable && audioPlayer) {
+    _useAudioFallback = true;
+  }
   renderHome();
   showPage('home');
   checkTtsCompatibility();
@@ -519,31 +564,21 @@ function checkTtsCompatibility() {
   const hint = $('tts-hint');
   if (!hint) return;
 
-  // 检测浏览器
-  const ua = navigator.userAgent;
-  const isChrome = /Chrome/i.test(ua) && !/Edge|OPR|OPPO|UCBrowser|QQ/i.test(ua);
-  const isAndroid = /Android/i.test(ua);
-
-  // 给 TTS 检测一个短暂延迟，等 voices 加载
+  // 给 TTS 检测一个短暂延迟
   setTimeout(() => {
     let reason = '';
-    if (!synth) {
-      reason = '你的浏览器不支持语音朗读，试试用 <b>Chrome 浏览器</b> 打开吧～';
-    } else if (!_ttsAvailable) {
-      if (isAndroid && !isChrome) {
-        reason = '此浏览器可能不支持语音朗读，推荐用 <b>Chrome 浏览器</b> 打开～ 📱';
-      } else if (!isChrome) {
-        reason = '当前浏览器语音兼容性有限，推荐用 <b>Chrome</b> 或 <b>Edge</b> 打开～';
-      } else {
-        reason = '未检测到中文语音，请检查系统 TTS 设置～';
-      }
+    if (!synth && !_useAudioFallback) {
+      reason = '语音朗读不可用，试试用 <b>Chrome 浏览器</b> 打开～';
+    } else if (_useAudioFallback) {
+      // MP3 后备已启用，不需要警告
+      return;
     }
     if (reason) {
       hint.innerHTML = `<span>🔇 ${reason}</span>
         <button onclick="this.parentElement.remove()" style="margin-left:10px;background:none;border:none;font-size:18px;cursor:pointer;color:#E65100;">✕</button>`;
       hint.classList.remove('hidden');
     }
-  }, 2000);
+  }, 2500);
 }
 // 确保即使 DOMContentLoaded 已触发也能正常初始化
 if (document.readyState === 'loading') {
