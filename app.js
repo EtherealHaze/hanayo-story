@@ -12,6 +12,7 @@ const state = {
   questionTimer: null,
 };
 let _pageChanging = false; // 防抖锁：防止翻页竞态
+let _autoPageTimer = null;  // 自动翻页定时器（stopSpeak 时取消）
 
 // ----- 工具函数 -----
 function $(id) { return document.getElementById(id); }
@@ -172,6 +173,11 @@ function stopSpeak() {
     audioPlayer.onerror = null;
     audioPlayer.pause();
     audioPlayer.src = '';
+  }
+  // 取消潜伏的自动翻页定时器（关键！）
+  if (_autoPageTimer) {
+    clearTimeout(_autoPageTimer);
+    _autoPageTimer = null;
   }
   currentUtterance = null;
   state.isSpeaking = false;
@@ -335,7 +341,7 @@ function speakCurrentPage() {
     const audioSrc = `assets/audio/${story.id}_p${pageIdx}.mp3`;
     playAudio(audioSrc, () => {
       if (state.isAutoPlay && state.currentPage < story.pages.length - 1) {
-        setTimeout(() => nextPage(), 1500);
+        _autoPageTimer = setTimeout(() => { _autoPageTimer = null; nextPage(); }, 1500);
       }
     });
     return;
@@ -343,7 +349,7 @@ function speakCurrentPage() {
   const page = state.currentStory.pages[state.currentPage];
   speak(page.text, () => {
     if (state.isAutoPlay && state.currentPage < state.currentStory.pages.length - 1) {
-      setTimeout(() => nextPage(), 1500);
+      _autoPageTimer = setTimeout(() => { _autoPageTimer = null; nextPage(); }, 1500);
     }
   });
 }
