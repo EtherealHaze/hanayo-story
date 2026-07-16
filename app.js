@@ -53,14 +53,21 @@ function playAudio(src, onEnd) {
   };
   state.isSpeaking = true;
   updateSpeakButton();
-  audioPlayer.play().catch(() => {
-    // 播放被阻止：同样不触发 onEnd
-    console.warn('Audio play blocked:', src);
-    state.isSpeaking = false;
-    updateSpeakButton();
-    state.isAutoPlay = false;
-    updateAutoPlayBtn();
-  });
+  // 兼容旧浏览器：play() 可能不返回 Promise
+  try {
+    const promise = audioPlayer.play();
+    if (promise && typeof promise.catch === 'function') {
+      promise.catch(() => {
+        console.warn('Audio play blocked:', src);
+        state.isSpeaking = false;
+        updateSpeakButton();
+        state.isAutoPlay = false;
+        updateAutoPlayBtn();
+      });
+    }
+  } catch (_) {
+    // 旧浏览器忽略 play 错误
+  }
 }
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -136,18 +143,19 @@ function speak(text, onEnd) {
     if (onEnd) onEnd();
   };
   u.onerror = (e) => {
-    console.log('TTS error:', e.error);
+    console.warn('TTS error:', e.error);
     currentUtterance = null;
     state.isSpeaking = false;
     updateSpeakButton();
-    // 网络错误 → 启用 MP3 后备
+    // 出错 → 下次切 audio 后备，本次不触发 onEnd（避免连续跳转）
     if (e.error === 'network' || e.error === 'not-allowed' || e.error === 'synthesis-failed') {
       _ttsAvailable = false;
       _useAudioFallback = true;
       updateSpeakButton();
       updateAutoPlayBtn();
+      state.isAutoPlay = false;
     }
-    if (onEnd) setTimeout(onEnd, 100);
+    // 注意：不调用 onEnd！避免错误时连续跳转
   };
 
   currentUtterance = u;
