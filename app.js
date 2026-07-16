@@ -28,26 +28,38 @@ const audioPlayer = $('audio-player');
 
 function playAudio(src, onEnd) {
   if (!audioPlayer) {
-    if (onEnd) setTimeout(onEnd, 100);
+    state.isSpeaking = false;
+    updateSpeakButton();
     return;
   }
+  // 清除旧事件，避免 stopSpeak 清空 src 时误触发
+  audioPlayer.onended = null;
+  audioPlayer.onerror = null;
+  audioPlayer.pause();
   audioPlayer.src = src;
+
   audioPlayer.onended = () => {
     state.isSpeaking = false;
     updateSpeakButton();
     if (onEnd) onEnd();
   };
   audioPlayer.onerror = () => {
+    // 音频加载失败：禁用自动播放，不触发 onEnd（避免连续跳转）
+    console.warn('Audio load failed:', src);
     state.isSpeaking = false;
     updateSpeakButton();
-    if (onEnd) setTimeout(onEnd, 100);
+    state.isAutoPlay = false;
+    updateAutoPlayBtn();
   };
   state.isSpeaking = true;
   updateSpeakButton();
   audioPlayer.play().catch(() => {
+    // 播放被阻止：同样不触发 onEnd
+    console.warn('Audio play blocked:', src);
     state.isSpeaking = false;
     updateSpeakButton();
-    if (onEnd) setTimeout(onEnd, 100);
+    state.isAutoPlay = false;
+    updateAutoPlayBtn();
   });
 }
 function showPage(name) {
@@ -146,7 +158,12 @@ function speak(text, onEnd) {
 
 function stopSpeak() {
   if (synth) synth.cancel();
-  if (audioPlayer) { audioPlayer.pause(); audioPlayer.src = ''; }
+  if (audioPlayer) {
+    audioPlayer.onended = null;
+    audioPlayer.onerror = null;
+    audioPlayer.pause();
+    audioPlayer.src = '';
+  }
   currentUtterance = null;
   state.isSpeaking = false;
 }
