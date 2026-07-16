@@ -1,8 +1,6 @@
 // 花音故事 — 示例故事库
 // 部编版一年级语文知识点自然融入
 
-const SAMPLE_STORIES = [story1, story2];
-
 // ===== 故事1：小兔子的新朋友 =====
 const story1 = {
   id: 'rabbit_friend',
@@ -210,3 +208,5 @@ const story2 = {
       examples: ['一个盒子', '一个苹果', '一个礼物'] },
   ],
 };
+
+const SAMPLE_STORIES = [story1, story2];
