@@ -41,6 +41,14 @@ function playAudio(src, onEnd) {
   audioPlayer.src = src;
 
   audioPlayer.onended = () => {
+    // 保护：音频必须播到 90% 以上才算真正结束
+    // OPPO 等浏览器可能提前误触发 ended 事件
+    const dur = audioPlayer.duration;
+    const cur = audioPlayer.currentTime;
+    if (dur > 0 && cur < dur * 0.85) {
+      console.warn('Premature ended ignored:', cur, '/', dur);
+      return; // 忽略提前触发的 ended
+    }
     state.isSpeaking = false;
     updateSpeakButton();
     if (onEnd) onEnd();
