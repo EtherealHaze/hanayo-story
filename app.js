@@ -11,6 +11,7 @@ const state = {
   quizAnswered: false,
   questionTimer: null,
 };
+let _pageChanging = false; // 防抖锁：防止翻页竞态
 
 // ----- 工具函数 -----
 function $(id) { return document.getElementById(id); }
@@ -334,7 +335,7 @@ function speakCurrentPage() {
     const audioSrc = `assets/audio/${story.id}_p${pageIdx}.mp3`;
     playAudio(audioSrc, () => {
       if (state.isAutoPlay && state.currentPage < story.pages.length - 1) {
-        setTimeout(() => nextPage(), 700);
+        setTimeout(() => nextPage(), 1500);
       }
     });
     return;
@@ -342,7 +343,7 @@ function speakCurrentPage() {
   const page = state.currentStory.pages[state.currentPage];
   speak(page.text, () => {
     if (state.isAutoPlay && state.currentPage < state.currentStory.pages.length - 1) {
-      setTimeout(() => nextPage(), 700);
+      setTimeout(() => nextPage(), 1500);
     }
   });
 }
@@ -353,6 +354,11 @@ function replayPage() {
 }
 
 function nextPage() {
+  // 防抖：500ms 内不允许重复翻页
+  if (_pageChanging) return;
+  _pageChanging = true;
+  setTimeout(() => { _pageChanging = false; }, 500);
+
   stopSpeak();
   const total = state.currentStory.pages.length;
   if (state.currentPage < total - 1) {
@@ -360,9 +366,9 @@ function nextPage() {
     renderStoryPage();
     updateDots();
     updateSpeakButton();
-    setTimeout(() => speakCurrentPage(), 300);
+    setTimeout(() => speakCurrentPage(), 400);
   } else {
-    // 故事结束 → 问答
+    _pageChanging = false;
     startQuiz();
   }
 }
