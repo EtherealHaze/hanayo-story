@@ -81,8 +81,8 @@ function showPage(name) {
 const synth = window.speechSynthesis;
 let currentUtterance = null;
 let _voicesReady = false;
-let _ttsAvailable = !!synth;
-let _useAudioFallback = false; // 是否使用 MP3 后备方案
+let _ttsAvailable = false; // 强制 MP3 音频，不走 speechSynthesis
+let _useAudioFallback = true;
 
 // 强制加载 voices（Chrome 异步加载）
 if (synth) {
